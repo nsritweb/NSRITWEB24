@@ -1,0 +1,4 @@
+flask
+pandas
+openpyxl
+fpdf2  # Changed from fpdf to fpdf2
