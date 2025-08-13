@@ -1,4 +1,4 @@
-flask
-pandas
-openpyxl
-fpdf2  # Changed from fpdf to fpdf2
+Flask==3.0.3
+Flask-Cors==4.0.1
+openpyxl==3.1.2
+fpdf2==2.7.9

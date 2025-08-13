@@ -1,136 +1,199 @@
 # app.py
-from flask import Flask, render_template, request, send_file, url_for, redirect
-import pandas as pd
+
+from flask import Flask, request, send_file, jsonify, render_template
+from flask_cors import CORS
 from fpdf import FPDF
+import io
 import os
+import base64
 
-app = Flask(__name__)
+# Initialize Flask app
+app = Flask(__name__, static_folder='static')
+CORS(app)
 
-# Define folders for uploads and generated PDFs
-UPLOAD_FOLDER = 'uploads'
-PDF_FOLDER = 'generated_pdfs'
-LOGO_PATH = 'static/logo.jpg'
+# Set the maximum content length for uploads to 200 MB (200 * 1024 * 1024 bytes)
+app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200 Megabytes
 
-# Ensure these directories exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PDF_FOLDER, exist_ok=True)
+# Define the API endpoint for processing data and generating a single multi-page PDF
+@app.route('/generate-pdfs-from-data', methods=['POST'])
+def generate_pdfs_from_data():
+    data = request.get_json()
 
-# Custom PDF class for report generation
-class PDF(FPDF):
-    def header(self):
-        # Increase the width and height of the image
-        if os.path.exists(LOGO_PATH):
-            self.image(LOGO_PATH, 10, 8, 40) # x, y, width
-        self.set_font('Arial', 'B', 12)
-        # Push the title down so it doesn't overlap with the logo
-        self.ln(20) # Add a line break to create space
-        self.cell(0, 10, 'Student Report - Marks Below 24 & Absent', border=False, ln=True, align='C')
-        self.ln(10)
+    if not data:
+        return jsonify({'error': 'No JSON data received.'}), 400
 
-# Main dashboard route for displaying the form and handling file uploads
-@app.route('/', methods=['GET', 'POST'])
-def dashboard():
-    if request.method == 'POST':
-        branch = request.form['branch']
-        year = request.form['year']
-        semester = request.form['semester']
-        section = request.form['section']
-        strength = request.form['strength']
-        test = request.form['test']
+    branch = data.get('branch', 'N/A')
+    year = data.get('year', 'N/A')
+    semester = data.get('semester', 'N/A')
+    section = data.get('section', 'N/A')
+    strength = data.get('strength', 'N/A')
+    test = data.get('test', 'N/A')
+    app_image_base64 = data.get('appImageBase64', '')
+    all_subjects_data = data.get('allSubjectsData', {}) # New structure for all subjects
 
-        file = request.files['file']
-        if file:
-            filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-            file.save(filepath)
-            pdf_filename = process_excel(filepath, branch, year, semester, section, strength, test)
+    try:
+        # Create a single PDF object for all subjects
+        pdf = FPDF()
+        img_width_pdf = 180
+        img_height_pdf = (img_width_pdf / 1000) * 250
+        page_width = pdf.w
+        img_x_pdf = (page_width - img_width_pdf) / 2
+
+        def add_header_to_pdf(doc_instance, subject_name):
+            doc_instance.set_font('Arial', '', 10)
+            if app_image_base64:
+                img_data_clean = app_image_base64.split(',')[1] if ',' in app_image_base64 else app_image_base64
+                doc_instance.image(io.BytesIO(base64.b64decode(img_data_clean)), x=img_x_pdf, y=10, w=img_width_pdf, h=img_height_pdf, type='JPEG')
             
-            # Redirect to the new preview page
-            return redirect(url_for('show_result', pdf_filename=pdf_filename))
+            doc_instance.set_xy(0, 10 + img_height_pdf + 5)
+            doc_instance.set_font('Arial', '', 10)
+            doc_instance.cell(w=page_width, h=0, txt=f"Branch: {branch} | Year: {year} | Semester: {semester} | Section: {section} | Test: {test}", align='C')
+            doc_instance.line(10, 10 + img_height_pdf + 10, page_width - 10, 10 + img_height_pdf + 10)
+            
+            doc_instance.set_xy(0, 10 + img_height_pdf + 15)
+            doc_instance.set_font('Arial', 'B', 14)
+            doc_instance.cell(w=page_width, h=0, txt=f"Subject: {subject_name}", align='C')
 
-    return render_template('dashboard.html')
+        # Iterate through all subjects and add a new page for each report
+        first_page = True
+        for subject_name, subject_data in all_subjects_data.items():
+            low_scorers = subject_data.get('lowScorers', [])
+            absent_students = subject_data.get('absentStudents', [])
 
-# Function to process the Excel file and generate the PDF
-def process_excel(filepath, branch, year, semester, section, strength, test):
-    # Specify header row for pandas
-    df = pd.read_excel(filepath, header=14)
+            if not low_scorers and not absent_students:
+                continue # Skip subjects with no data to report
 
-    # Correctly identify the subject column(s)
-    subject_columns = [col for col in df.columns if 'MID' in col.upper()]
+            # Add a new page for each subject's report
+            pdf.add_page()
+            add_header_to_pdf(pdf, subject_name)
 
-    if not subject_columns:
-        print("Warning: No 'MID' columns found. Please check Excel headers.")
-        if len(df.columns) > 3:
-            subject_columns = [df.columns[3]]
-        else:
-            raise ValueError("No subject columns found in the Excel file.")
+            y_position_start = 10 + img_height_pdf + 30
+            
+            if low_scorers:
+                pdf.set_font('Arial', 'B', 16)
+                pdf.set_xy(0, y_position_start)
+                pdf.cell(w=page_width, h=0, txt="Students Scoring Less Than 24", align='C')
+                
+                table_data = [['Roll No', 'Name', 'Score']]
+                for s in low_scorers:
+                    table_data.append([str(s['rollNo']), str(s['name']), str(s['score'])])
+                
+                pdf.set_font('Arial', '', 10)
+                y_start = y_position_start + 15
+                col_widths = [40, 70, 30]
+                
+                pdf.set_fill_color(76, 175, 80)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font('Arial', 'B', 10)
+                x_pos = 10
+                for i, header in enumerate(table_data[0]):
+                    pdf.set_xy(x_pos, y_start)
+                    pdf.cell(col_widths[i], 10, header, 1, 0, 'C', 1)
+                    x_pos += col_widths[i]
+                pdf.ln(10)
+                
+                pdf.set_text_color(51, 51, 51)
+                row_fill = False
+                for row in table_data[1:]:
+                    pdf.set_fill_color(245, 245, 245) if not row_fill else pdf.set_fill_color(255, 255, 255)
+                    row_fill = not row_fill
+                    x_pos = 10
+                    # Check for page break
+                    if pdf.get_y() + 10 > pdf.h - 20:
+                        pdf.add_page()
+                        add_header_to_pdf(pdf, subject_name)
+                        y_start_new = 10 + img_height_pdf + 45
+                        x_pos_new = 10
+                        for i, cell_data in enumerate(table_data[0]):
+                            pdf.set_xy(x_pos_new, y_start_new)
+                            pdf.set_fill_color(76, 175, 80)
+                            pdf.set_text_color(255, 255, 255)
+                            pdf.set_font('Arial', 'B', 10)
+                            pdf.cell(col_widths[i], 10, cell_data, 1, 0, 'C', 1)
+                            x_pos_new += col_widths[i]
+                        pdf.ln(10)
+                        pdf.set_text_color(51, 51, 51)
+                        
+                    for i, cell_data in enumerate(row):
+                        pdf.set_xy(x_pos, pdf.get_y())
+                        pdf.cell(col_widths[i], 10, cell_data, 1, 0, 'C', 1)
+                        x_pos += col_widths[i]
+                    pdf.ln(10)
 
-    pdf = PDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-
-    # Iterate through each identified subject column
-    for subject in subject_columns:
-        pdf.add_page()
-        pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, f'Subject: {subject} | Test: {test}', ln=True)
-        pdf.set_font('Arial', '', 10)
-        pdf.cell(0, 7, f'Branch: {branch}, Year: {year}, Semester: {semester}, Section: {section}, Total Strength: {strength}', ln=True)
-        pdf.ln(5)
-
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(40, 10, 'Roll No', 1)
-        pdf.cell(70, 10, 'Name', 1)
-        pdf.cell(30, 10, 'Marks', 1)
-        pdf.cell(40, 10, 'Status', 1)
-        pdf.ln()
-
-        for index, row in df.iterrows():
-            roll_no = str(row['ROLL NO'])
-            name = str(row['NAME '])
-            marks = row[subject]
-            status = ''
-            display_marks = ''
-
-            if pd.isna(marks) or (isinstance(marks, str) and marks.strip().upper() in ['AB', 'A', 'ABSENT', '']):
-                status = 'Absent'
-                display_marks = 'AB'
-            else:
-                try:
-                    numeric_marks = float(marks)
-                    if numeric_marks < 24:
-                        status = 'Fail'
-                        display_marks = str(numeric_marks)
+            if absent_students:
+                if low_scorers:
+                    if pdf.get_y() + 20 > pdf.h - 20:
+                        pdf.add_page()
+                        add_header_to_pdf(pdf, subject_name)
+                        y_position_absent = 10 + img_height_pdf + 30
                     else:
-                        continue
-                except (ValueError, TypeError):
-                    status = 'Invalid Marks'
-                    display_marks = str(marks)
+                        y_position_absent = pdf.get_y() + 15
+                else:
+                    y_position_absent = y_position_start
+                
+                pdf.set_font('Arial', 'B', 16)
+                pdf.set_xy(0, y_position_absent)
+                pdf.cell(w=page_width, h=0, txt="Absent Students", align='C')
 
-            pdf.set_font('Arial', '', 12)
-            pdf.cell(40, 10, roll_no, 1)
-            pdf.cell(70, 10, name, 1)
-            pdf.cell(30, 10, display_marks, 1)
-            pdf.cell(40, 10, status, 1)
-            pdf.ln()
+                table_data = [['Roll No', 'Name']]
+                for s in absent_students:
+                    table_data.append([str(s['rollNo']), str(s['name'])])
+                
+                pdf.set_font('Arial', '', 10)
+                y_start = y_position_absent + 15
+                col_widths = [60, 90]
 
-    pdf_filename = f"report_{branch}_{year}_{semester}_{section}_{test}.pdf"
-    pdf_output_path = os.path.join(PDF_FOLDER, pdf_filename)
-    pdf.output(pdf_output_path)
-    return pdf_filename
+                pdf.set_fill_color(255, 193, 7)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font('Arial', 'B', 10)
+                x_pos = 10
+                for i, header in enumerate(table_data[0]):
+                    pdf.set_xy(x_pos, y_start)
+                    pdf.cell(col_widths[i], 10, header, 1, 0, 'C', 1)
+                    x_pos += col_widths[i]
+                pdf.ln(10)
 
-# NEW ROUTE: To show the PDF preview page
-@app.route('/result/<pdf_filename>')
-def show_result(pdf_filename):
-    return render_template('result.html', pdf_filename=pdf_filename)
+                pdf.set_text_color(51, 51, 51)
+                row_fill = False
+                for row in table_data[1:]:
+                    pdf.set_fill_color(255, 248, 220) if not row_fill else pdf.set_fill_color(255, 255, 255)
+                    row_fill = not row_fill
+                    x_pos = 10
+                    # Check for page break
+                    if pdf.get_y() + 10 > pdf.h - 20:
+                        pdf.add_page()
+                        add_header_to_pdf(pdf, subject_name)
+                        y_start_new = 10 + img_height_pdf + 45
+                        x_pos_new = 10
+                        for i, cell_data in enumerate(table_data[0]):
+                            pdf.set_xy(x_pos_new, y_start_new)
+                            pdf.set_fill_color(255, 193, 7)
+                            pdf.set_text_color(255, 255, 255)
+                            pdf.set_font('Arial', 'B', 10)
+                            pdf.cell(col_widths[i], 10, cell_data, 1, 0, 'C', 1)
+                            x_pos_new += col_widths[i]
+                        pdf.ln(10)
+                        pdf.set_text_color(51, 51, 51)
+                    for i, cell_data in enumerate(row):
+                        pdf.set_xy(x_pos, pdf.get_y())
+                        pdf.cell(col_widths[i], 10, cell_data, 1, 0, 'C', 1)
+                        x_pos += col_widths[i]
+                    pdf.ln(10)
 
-# NEW ROUTE: To serve the PDF for viewing in the iframe
-@app.route('/view/<filename>')
-def view_pdf(filename):
-    return send_file(os.path.join(PDF_FOLDER, filename))
+        # Output the single PDF
+        pdf_output = io.BytesIO()
+        pdf.output(pdf_output)
+        pdf_output.seek(0)
+        return send_file(pdf_output, mimetype='application/pdf', as_attachment=True, download_name='student_reports.pdf')
 
-# ROUTE: To securely serve the generated PDF files for download
-@app.route('/download/<filename>')
-def download_pdf(filename):
-    return send_file(os.path.join(PDF_FOLDER, filename), as_attachment=True)
+    except Exception as e:
+        print(f"Error processing request: {e}")
+        return jsonify({'error': f'Error generating PDF: {str(e)}'}), 500
+
+@app.route('/')
+def serve_index():
+    return render_template('index.html')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)

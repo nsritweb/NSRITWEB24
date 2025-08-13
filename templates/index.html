@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Performance Report Generator</title>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS (xlsx) library for client-side Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        /* General Body Styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 2rem; /* py-8 */
+            padding-bottom: 2rem;
+            min-height: 100vh;
+        }
+
+        /* Main Container Styles */
+        .container {
+            width: 100%;
+            max-width: 64rem; /* max-w-4xl */
+            background-color: #ffffff;
+            padding: 2rem; /* p-8 */
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+        }
+
+        /* Header Image Container Styles */
+        .header-image-container {
+            width: 100%;
+            max-width: 64rem; /* max-w-4xl */
+            margin-bottom: 2rem; /* mb-8 */
+            padding: 1rem; /* p-4 */
+            background-color: #ffffff;
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
+        }
+
+        .header-image-container img {
+            width: 100%; /* w-full */
+            height: auto; /* h-auto */
+            border-radius: 0.375rem; /* rounded-md */
+        }
+
+        /* Heading Styles */
+        h1 {
+            font-size: 1.875rem; /* text-3xl */
+            font-weight: 700; /* font-bold */
+            color: #1f2937; /* text-gray-800 */
+            margin-bottom: 1.5rem; /* mb-6 */
+            text-align: center; /* text-center */
+        }
+
+        /* Message Box Styles */
+        .message-box {
+            padding: 0.75rem; /* p-3 */
+            margin-bottom: 1rem; /* mb-4 */
+            border-radius: 0.375rem; /* rounded-md */
+            font-size: 0.875rem; /* text-sm */
+        }
+        .message-box.error {
+            background-color: #fee2e2; /* bg-red-100 */
+            color: #b91c1c; /* text-red-700 */
+        }
+        .message-box.success {
+            background-color: #d1fae5; /* bg-green-100 */
+            color: #065f46; /* text-green-700 */
+        }
+        .message-box.hidden {
+            display: none;
+        }
+
+        /* Dashboard Grid Styles */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Responsive grid */
+            gap: 1.5rem; /* gap-6 */
+            margin-bottom: 2rem; /* mb-8 */
+        }
+
+        /* Label Styles */
+        label {
+            display: block; /* block */
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500; /* font-medium */
+            color: #374151; /* text-gray-700 */
+            margin-bottom: 0.25rem; /* mb-1 */
+        }
+
+        /* Input Field Styles (for select and input) */
+        .input-field {
+            margin-top: 0.25rem; /* mt-1 */
+            display: block;
+            width: 100%; /* w-full */
+            padding-left: 0.75rem; /* pl-3 */
+            padding-right: 2.5rem; /* pr-10 for select, pr-3 for input */
+            padding-top: 0.5rem; /* py-2 */
+            padding-bottom: 0.5rem; /* py-2 */
+            font-size: 1rem; /* text-base */
+            border: 1px solid #d1d5db; /* border-gray-300 */
+            outline: none; /* focus:outline-none */
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* shadow-sm */
+        }
+        .input-field:focus {
+            border-color: #6366f1; /* focus:border-indigo-500 */
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5); /* focus:ring-indigo-500 */
+        }
+
+        /* File Input Styles */
+        .file-input {
+            display: block;
+            width: 100%;
+            font-size: 0.875rem; /* text-sm */
+            color: #6b7280; /* text-gray-500 */
+        }
+        .file-input::file-selector-button {
+            margin-right: 1rem; /* file:mr-4 */
+            padding: 0.5rem 1rem; /* file:py-2 file:px-4 */
+            border-radius: 9999px; /* file:rounded-full */
+            border: 0; /* file:border-0 */
+            font-size: 0.875rem; /* file:text-sm */
+            font-weight: 600; /* file:font-semibold */
+            background-color: #eef2ff; /* file:bg-indigo-50 */
+            color: #4f46e5; /* file:text-indigo-700 */
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+        .file-input::file-selector-button:hover {
+            background-color: #e0e7ff; /* hover:file:bg-indigo-100 */
+        }
+
+        /* Button Group Styles */
+        .button-group {
+            display: flex;
+            flex-direction: column; /* flex-col */
+            gap: 1rem; /* gap-4 */
+            justify-content: center; /* justify-center */
+        }
+        @media (min-width: 640px) { /* sm breakpoint */
+            .button-group {
+                flex-direction: row; /* sm:flex-row */
+            }
+        }
+
+        /* General Button Styles */
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem 1.5rem; /* px-6 py-3 */
+            border: 1px solid transparent; /* border border-transparent */
+            font-size: 1rem; /* text-base */
+            font-weight: 500; /* font-medium */
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* shadow-sm */
+            color: #ffffff; /* text-white */
+            transition: background-color 0.15s ease-in-out;
+            outline: none;
+            cursor: pointer;
+        }
+        .btn:focus {
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5), 0 0 0 4px var(--focus-ring-color); /* focus:ring-2 focus:ring-offset-2 */
+        }
+        .btn svg {
+            width: 1.25rem; /* w-5 */
+            height: 1.25rem; /* h-5 */
+            margin-right: 0.5rem; /* mr-2 */
+        }
+
+        /* Green Button Styles */
+        .btn-green {
+            background-color: #10b981; /* bg-green-600 */
+            --focus-ring-color: #34d399; /* focus:ring-green-500 */
+        }
+        .btn-green:hover:not(:disabled) {
+            background-color: #059669; /* hover:bg-green-700 */
+        }
+
+        /* Blue Button Styles */
+        .btn-blue {
+            background-color: #3b82f6; /* bg-blue-600 */
+            --focus-ring-color: #60a5fa; /* focus:ring-blue-500 */
+        }
+        .btn-blue:hover:not(:disabled) {
+            background-color: #2563eb; /* hover:bg-blue-700 */
+        }
+
+        /* Disabled Button Styles */
+        .btn:disabled {
+            background-color: #9ca3af; /* bg-gray-400 */
+            cursor: not-allowed;
+        }
+
+        /* Spinner Animation */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* PDF Generated Message */
+        #pdf-generated-message {
+            margin-top: 2rem; /* mt-8 */
+            text-align: center; /* text-center */
+        }
+        #pdf-generated-message p {
+            font-size: 1.125rem; /* text-lg */
+            color: #374151; /* text-gray-700 */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Image -->
+    <div class="header-image-container" id="header-image-container">
+        <img
+            src="https://placehold.co/1000x250/cccccc/333333?text=Loading+Image..."
+            alt="College Logo"
+            id="app-header-image"
+            onerror="this.onerror=null;this.src='https://placehold.co/1000x250/cccccc/333333?text=Image+Not+Loaded';"
+        />
+    </div>
+
+    <div class="container">
+        <h1>Student Performance Report Generator</h1>
+
+        <div id="message-display" class="message-box hidden"></div>
+
+        <!-- Dashboard Options -->
+        <div class="dashboard-grid">
+            <!-- Branch -->
+            <div>
+                <label for="branch">Branch</label>
+                <select id="branch" class="input-field">
+                    <option value="">Select Branch</option>
+                    <option value="CSE">CSE</option>
+                    <option value="CSM">CSM</option>
+                    <option value="CSD">CSD</option>
+                </select>
+            </div>
+
+            <!-- Year -->
+            <div>
+                <label for="year">Year</label>
+                <select id="year" class="input-field">
+                    <option value="">Select Year</option>
+                    <option value="2nd">2nd</option>
+                    <option value="3rd">3rd</option>
+                    <option value="4th">4th</option>
+                </select>
+            </div>
+
+            <!-- Semester -->
+            <div>
+                <label for="semester">Semester</label>
+                <select id="semester" class="input-field">
+                    <option value="">Select Semester</option>
+                    <option value="3rd">3rd</option>
+                    <option value="4th">4th</option>
+                    <option value="5th">5th</option>
+                    <option value="6th">6th</option>
+                    <option value="7th">7th</option>
+                    <option value="8th">8th</option>
+                </select>
+            </div>
+
+            <!-- Section -->
+            <div>
+                <label for="section">Section</label>
+                <select id="section" class="input-field">
+                    <option value="">Select Section</option>
+                    <option value="1st">1st</option>
+                    <option value="2nd">2nd</option>
+                    <option value="3rd">3rd</option>
+                    <option value="4th">4th</option>
+                </select>
+            </div>
+
+            <!-- Strength of Student -->
+            <div>
+                <label for="strength">Strength of Student</label>
+                <input
+                    type="number"
+                    id="strength"
+                    class="input-field"
+                    placeholder="e.g., 60"
+                />
+            </div>
+
+            <!-- Test -->
+            <div>
+                <label for="test">Test</label>
+                <select id="test" class="input-field">
+                    <option value="">Select Test</option>
+                    <option value="Mid1">Mid1</option>
+                    <option value="Mid2">Mid2</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- File Upload -->
+        <div style="margin-bottom: 1.5rem;">
+            <label for="excel-upload">Upload Excel Sheet (Each worksheet will be a separate PDF page)</label>
+            <input
+                type="file"
+                id="excel-upload"
+                accept=".xlsx, .xls"
+                class="file-input"
+            />
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="button-group">
+            <button id="generate-pdf-btn" class="btn btn-blue" disabled>
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Generate Reports (as PDF)
+            </button>
+        </div>
+
+        <div id="pdf-generated-message" class="hidden">
+            <p>Your PDF reports have been generated and downloaded as a single PDF file!</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Elements
+            const branchSelect = document.getElementById('branch');
+            const yearSelect = document.getElementById('year');
+            const semesterSelect = document.getElementById('semester');
+            const sectionSelect = document.getElementById('section');
+            const strengthInput = document.getElementById('strength');
+            const testSelect = document.getElementById('test');
+            const excelUploadInput = document.getElementById('excel-upload');
+            const generatePdfBtn = document.getElementById('generate-pdf-btn');
+            const messageDisplay = document.getElementById('message-display');
+            const pdfGeneratedMessage = document.getElementById('pdf-generated-message');
+            const appHeaderImage = document.getElementById('app-header-image');
+
+            // State variables
+            let excelFile = null;
+            let appImageBase64 = '';
+            let loading = false;
+            let allSubjectsData = {}; // Stores all processed data from all worksheets
+            let hasProcessedData = false;
+
+            // The corrected image URL based on your file structure.
+            // The image is in the 'static' folder and is named 'logo.jpg'.
+            const userImageUrl = window.location.origin + '/static/logo.jpg';
+            console.log("Full path being used for image:", userImageUrl);
+
+
+            // Helper function to update message display
+            function showMessage(msg, isError = false) {
+                messageDisplay.textContent = msg;
+                messageDisplay.classList.remove('hidden', 'success', 'error');
+                if (isError) {
+                    messageDisplay.classList.add('error');
+                } else {
+                    messageDisplay.classList.add('success');
+                }
+            }
+
+            function hideMessage() {
+                messageDisplay.classList.add('hidden');
+            }
+
+            // Helper function to set loading state on button
+            function setLoading(isLoading, button) {
+                loading = isLoading;
+                const svg = button.querySelector('svg');
+
+                if (isLoading) {
+                    button.disabled = true;
+                    if (!svg.classList.contains('spinner')) {
+                        const spinnerSvg = `<svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>`;
+                        if (svg) svg.remove();
+                        button.insertAdjacentHTML('afterbegin', spinnerSvg);
+                    }
+                } else {
+                    button.disabled = false;
+                    const spinner = button.querySelector('.spinner');
+                    if (spinner) {
+                        spinner.remove();
+                        button.insertAdjacentHTML('afterbegin', `<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`);
+                    }
+                }
+                updateGeneratePdfButtonState();
+            }
+
+            // Function to enable/disable the Generate PDF button
+            function updateGeneratePdfButtonState() {
+                // Button is enabled if an Excel file is selected, not loading, image loaded, and we found some data
+                generatePdfBtn.disabled = !excelFile || loading || !appImageBase64 || !hasProcessedData;
+                console.log("--- Button State Check ---");
+                console.log("excelFile selected:", excelFile !== null);
+                console.log("is loading:", loading);
+                console.log("appImageBase64 loaded:", appImageBase64 !== '');
+                console.log("hasProcessedData:", hasProcessedData);
+                console.log("All Subjects Data:", allSubjectsData);
+                console.log("Generate PDF button disabled:", generatePdfBtn.disabled);
+                console.log("--------------------------");
+            }
+
+            // Fetch the image from the local path and convert it to base64
+            const fetchImageAsBase64 = async () => {
+                try {
+                    const response = await fetch(userImageUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} from ${userImageUrl}`);
+                    }
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        appImageBase64 = reader.result;
+                        appHeaderImage.src = appImageBase64;
+                        updateGeneratePdfButtonState();
+                    };
+                    reader.readAsDataURL(blob);
+                } catch (error) {
+                    console.error("Error fetching or converting image to base64:", error);
+                    showMessage(`Failed to load header image from ${userImageUrl}. Please ensure the file exists at this path.`, true);
+                    appHeaderImage.src = "https://placehold.co/1000x250/cccccc/333333?text=Image+Not+Loaded";
+                    updateGeneratePdfButtonState();
+                }
+            };
+
+            fetchImageAsBase64();
+
+            // Function to process Excel data from all worksheets
+            const processExcelFile = (file) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            
+                            const processedDataForAllSubjects = {};
+                            let foundAnyValidData = false;
+
+                            workbook.SheetNames.forEach(sheetName => {
+                                const worksheet = workbook.Sheets[sheetName];
+                                const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                                
+                                if (json.length > 1) { // Ensure there are headers and at least one data row
+                                    
+                                    // Find the subject name from the 'Course Title' row
+                                    const courseTitleRow = json.find(row => row.length > 0 && row[0]?.toString().startsWith('Course Title:'));
+                                    const subjectName = courseTitleRow ? courseTitleRow[0].split(': ')[1] : sheetName;
+                                    
+                                    // Find the actual header row for student data
+                                    const headerRowIndex = json.findIndex(row => row.includes('Roll No') && row.includes('Name'));
+                                    
+                                    if (headerRowIndex === -1) {
+                                        console.warn(`Worksheet '${sheetName}' has no 'Roll No' or 'Name' header. Skipping.`);
+                                        return;
+                                    }
+
+                                    const headers = json[headerRowIndex];
+                                    const studentsData = json.slice(headerRowIndex + 1);
+
+                                    const lowScorers = [];
+                                    const absentStudents = [];
+
+                                    const rollNoIndex = headers.indexOf('Roll No');
+                                    const nameIndex = headers.indexOf('Name');
+                                    const totalIndex = headers.indexOf('Total');
+
+                                    if (totalIndex === -1) {
+                                        console.warn(`Worksheet '${sheetName}' has no 'Total' column. Skipping.`);
+                                        return;
+                                    }
+
+                                    studentsData.forEach(student => {
+                                        const rollNo = student[rollNoIndex];
+                                        const name = student[nameIndex];
+                                        let score = student[totalIndex];
+
+                                        if (!rollNo || !name) {
+                                            console.warn(`Skipping row in sheet '${sheetName}' due to missing Roll No or Name: ${JSON.stringify(student)}`);
+                                            return;
+                                        }
+
+                                        if (score === null || score === undefined || (typeof score === 'string' && score.trim().toUpperCase() === 'ABSENT')) {
+                                            if (!absentStudents.some(s => s.rollNo === rollNo)) {
+                                                absentStudents.push({ rollNo: rollNo, name: name });
+                                                foundAnyValidData = true;
+                                            }
+                                        } else {
+                                            try {
+                                                score = parseFloat(score);
+                                                if (!isNaN(score) && score < 24) {
+                                                    lowScorers.push({ rollNo: rollNo, name: name, score: score });
+                                                    foundAnyValidData = true;
+                                                }
+                                            } catch (parseError) {
+                                                console.error(`Error parsing score for ${name} (${rollNo}) in ${subjectName}:`, parseError);
+                                            }
+                                        }
+                                    });
+                                    
+                                    processedDataForAllSubjects[subjectName] = {
+                                        lowScorers: lowScorers,
+                                        absentStudents: absentStudents
+                                    };
+                                } else {
+                                    console.warn(`Worksheet '${sheetName}' is empty or has no data rows.`);
+                                }
+                            });
+                            
+                            if (!foundAnyValidData) {
+                                reject(new Error("No low scorers or absent students found in any worksheet."));
+                            } else {
+                                resolve(processedDataForAllSubjects);
+                            }
+
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+                    reader.onerror = (error) => reject(error);
+                    reader.readAsArrayBuffer(file);
+                });
+            };
+
+            // Event Listener for file input change
+            excelUploadInput.addEventListener('change', async (event) => {
+                excelFile = event.target.files[0];
+                hideMessage();
+                pdfGeneratedMessage.classList.add('hidden');
+                allSubjectsData = {};
+                hasProcessedData = false;
+
+                if (excelFile) {
+                    showMessage('Processing Excel file with multiple worksheets...');
+                    setLoading(true, generatePdfBtn);
+                    try {
+                        const result = await processExcelFile(excelFile);
+                        allSubjectsData = result;
+                        hasProcessedData = Object.keys(allSubjectsData).length > 0;
+                        console.log("Processed Data (from all worksheets):", allSubjectsData);
+                        showMessage('Excel file processed successfully! Ready to generate a single PDF report.');
+                    } catch (error) {
+                        console.error('Error processing Excel file:', error);
+                        showMessage(`Error processing Excel file: ${error.message}`, true);
+                        excelFile = null;
+                    } finally {
+                        setLoading(false, generatePdfBtn);
+                        updateGeneratePdfButtonState();
+                    }
+                } else {
+                    updateGeneratePdfButtonState();
+                }
+            });
+
+            // Event Listener for Generate PDF button
+            generatePdfBtn.addEventListener('click', async () => {
+                if (!excelFile || !hasProcessedData) {
+                    showMessage('Please upload and process an Excel file with valid data first.', true);
+                    return;
+                }
+                if (!appImageBase64) {
+                    showMessage('Header image not loaded. Cannot generate PDF.', true);
+                    return;
+                }
+
+                setLoading(true, generatePdfBtn);
+                showMessage('Sending processed data to server and generating a single PDF file...');
+                pdfGeneratedMessage.classList.add('hidden');
+
+                // Prepare data for the backend as JSON
+                const payload = {
+                    branch: branchSelect.value,
+                    year: yearSelect.value,
+                    semester: semesterSelect.value,
+                    section: sectionSelect.value,
+                    strength: strengthInput.value,
+                    test: testSelect.value,
+                    appImageBase64: appImageBase64,
+                    allSubjectsData: allSubjectsData
+                };
+
+                try {
+                    const response = await fetch(window.location.origin + '/generate-pdfs-from-data', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        try {
+                            const errorData = JSON.parse(errorText);
+                            throw new Error(`Server error: ${response.status} - ${errorData.error || 'Unknown error'}`);
+                        } catch (jsonError) {
+                            throw new Error(`Server error: ${response.status} - ${errorText || 'Unknown error (non-JSON response)'}`);
+                        }
+                    }
+
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'student_reports.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+
+                    showMessage('PDF report generated and downloaded successfully!');
+                    pdfGeneratedMessage.classList.remove('hidden');
+
+                } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    showMessage(`Error generating PDF: ${error.message}. Please check server logs.`, true);
+                } finally {
+                    setLoading(false, generatePdfBtn);
+                }
+            });
+
+            updateGeneratePdfButtonState();
+        });
+    </script>
+</body>
+</html>
